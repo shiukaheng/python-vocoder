@@ -1,10 +1,11 @@
-import pyaudio
+# import pyaudio
 from scipy.io.wavfile import read, write
 import scipy.signal as sig
 import numpy as np
-import matplotlib.pyplot as plt
 import scipy.interpolate as interp
-from datetime import timezone, datetime
+import sys
+import os.path
+from os import path
 
 def resample(file, target_rate):
     if file['rate'] != target_rate:
@@ -65,18 +66,10 @@ def proc_mag_only(stft, function):
 
 def envelope_proc(mag, rate):
     summag = np.sum(mag)
-    # peak_indices = sig.find_peaks(mag, distance=20)[0]
-    # cs = interp.CubicSpline(peak_indices, [mag[x] for x in peak_indices])
-    # envelope = cs(np.linspace(0, len(mag)-1, len(mag)))
     envelope = sig.savgol_filter(mag, 101, 1)
     envelope = envelope - np.min(envelope)
     envelope = envelope / np.max(envelope)
     envelope = envelope / np.sum(envelope) * summag
-    # plt.plot(envelope)
-    # plt.gca().set_xlim([0, 1000])
-    # plt.gca().set_ylim([0, 1])
-    # plt.show()
-    # plt.clf()
     return envelope
 
 def raw_envelope_proc(mag, rate):
@@ -90,56 +83,13 @@ def deenvelope_proc(mag, rate):
     nmag = nmag/np.sum(nmag)*o_summag
     return nmag
 
-
-def extract_filter(file, plot=False):
+def extract_filter(file):
     r = proc_mag_only(stft(file), envelope_proc)
-    if plot:
-        nmag = 20 * np.log10(r['mag'])
-        for mag in nmag:
-            plt.plot(r['frequency'], mag)
-            plt.gca().set_xlim([0, 8000])
-            plt.gca().set_ylim([-100, 0])
-            plt.title("Filter plot")
-            plt.xlabel("Frequency [Hz]")
-            plt.ylabel("Level [dB]")
-            plt.savefig("filterplot/"+str(int(datetime.now(tz=timezone.utc).timestamp() * 1000))+".png")
-            plt.clf()
     return r
 
-
-def extract_source(file, plot=False):
+def extract_source(file):
     r = process(file, deenvelope_proc)
-    if plot:
-        nft = 20 * np.log10(r['ft'])
-        for ft in np.transpose(nft):
-            plt.plot(r['frequency'], ft)
-            plt.gca().set_xlim([0, 8000])
-            plt.gca().set_ylim([-100, 0])
-            plt.title("Source plot")
-            plt.xlabel("Frequency [Hz]")
-            plt.ylabel("Level [dB]")
-            plt.savefig("sourceplot/" + str(int(datetime.now(tz=timezone.utc).timestamp() * 1000)) + ".png")
-            plt.clf()
     return r
-
-
-def play(read_file, play_samplerate=44100, out_index=4):
-    p = pyaudio.PyAudio()
-    stream = p.open(format=pyaudio.paInt16,
-                    channels=1,
-                    rate=play_samplerate,
-                    frames_per_buffer=1024,
-                    output=True,
-                    output_device_index=out_index
-                    )
-    if read_file['rate'] != play_samplerate:
-        wf = sig.resample(read_file['waveform'], play_samplerate*read_file['waveform'].size/read_file['rate'])
-    else:
-        wf = read_file['waveform']
-    wf = wf/np.max(np.abs(wf))*32767
-    stream.write(wf.astype(np.int16).tostring())
-    stream.close()
-
 
 def save(data, name='sample.wav'):
     wf = data['waveform']
@@ -156,30 +106,16 @@ def vocoder(file):
                 'chunk': filter_data['chunk'], 'nfft': filter_data['nfft']}
     return istft(source_data), istft(new_stft)
 
-def mvo(stft, path="/", title=""):
-    logft = 20 * np.log10(stft['ft'])
-    for ft in np.transpose(logft):
-        plt.plot(stft['frequency'], ft)
-        plt.gca().set_xlim([0, 8000])
-        plt.gca().set_ylim([-100, 0])
-        if title != "":
-            plt.title(title)
-        plt.xlabel("Frequency [Hz]")
-        plt.ylabel("Level [dB]")
-        plt.savefig(path + str(int(datetime.now(tz=timezone.utc).timestamp() * 1000)) + ".png")
-        plt.clf()
-
-
-f = read_file("google_2.wav")
-
-# src, comp = vocoder(f)
-# save(src)
-# play(comp)
-# # play(comp)
-# g = read_file("sample.wav")
-s = read_file("carrier.wav")
-# fa = stft(g)
-# mvo(fa, "resynthesized/", "Resynthesized plot")
-comp2 = musical_vocoder(s, f)
-save(comp2)
-# play(comp2)
+if __name__ == "__main__":
+    if not (path.exists(sys.argv[1]) and path.exists(sys.argv[2]) and (not path.exists(sys.argv[3]))):
+        print("Usage:")
+        print("python vocoder.py <carrier file> <modulator file> <output file>")
+        exit()
+    print("Reading carrier...")
+    carrier = read_file(sys.argv[1])
+    print("Reading modulator...")
+    modulator = read_file(sys.argv[2])
+    print("Processing...")
+    result = musical_vocoder(carrier, modulator)
+    save(result, name=sys.argv[3])
+    print("Done!")
