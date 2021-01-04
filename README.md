@@ -1,6 +1,6 @@
 # python-vocoder
 
-A simple vocoder implemented in Python using numpy and scipy.
+A simple vocoder implemented in Python using numpy and scipy 🎤🤖
 
 Usage:
 ```
